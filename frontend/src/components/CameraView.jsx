@@ -10,33 +10,12 @@ const CameraView = ({
   isTimerActive,
   timerCount,
   isMirrored,
+  isUploading,
+  camera,
   onTakePhoto,
   onToggleMirror,
   onBack
 }) => {
-  const videoRef = useRef(null);
-  const [hasCamera, setHasCamera] = useState(false);
-  const [cameraError, setCameraError] = useState('');
-
-  useEffect(() => {
-    // Mock camera setup - in real implementation, this would use getUserMedia
-    const setupMockCamera = () => {
-      try {
-        // Simulate camera initialization
-        setHasCamera(true);
-        setCameraError('');
-      } catch (error) {
-        setCameraError('Camera access denied or not available');
-        setHasCamera(false);
-      }
-    };
-
-    setupMockCamera();
-    
-    return () => {
-      // Cleanup would go here
-    };
-  }, []);
 
   return (
     <div className="max-w-6xl mx-auto">
@@ -69,26 +48,58 @@ const CameraView = ({
           <Card className="overflow-hidden bg-gradient-to-br from-pink-50/80 to-blue-50/80 backdrop-blur-sm border-pink-100/50">
             <CardContent className="p-6">
               <div className="relative aspect-[4/3] bg-black rounded-lg overflow-hidden">
-                {/* Mock Camera Feed */}
-                <div className={`w-full h-full bg-gradient-to-br from-pink-100 via-blue-100 to-amber-100 flex items-center justify-center ${isMirrored ? 'scale-x-[-1]' : ''} transition-transform duration-300`}>
-                  {hasCamera ? (
+                {/* Real Camera Feed */}
+                <video
+                  ref={camera.videoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  className={`w-full h-full object-cover ${isMirrored ? 'scale-x-[-1]' : ''} transition-transform duration-300`}
+                  style={{ display: camera.hasCamera ? 'block' : 'none' }}
+                />
+
+                {/* Camera Error Display */}
+                {!camera.hasCamera && camera.cameraError && (
+                  <div className="w-full h-full bg-gradient-to-br from-pink-100 via-blue-100 to-amber-100 flex items-center justify-center">
+                    <div className="text-center text-red-500 p-6">
+                      <Camera className="w-16 h-16 mx-auto mb-4" />
+                      <p className="font-semibold mb-2">Camera Issue</p>
+                      <p className="text-sm">{camera.cameraError}</p>
+                      <Button 
+                        onClick={camera.startCamera}
+                        className="mt-4 bg-pink-400 hover:bg-pink-500"
+                      >
+                        Try Again
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Loading Display */}
+                {!camera.hasCamera && !camera.cameraError && (
+                  <div className="w-full h-full bg-gradient-to-br from-pink-100 via-blue-100 to-amber-100 flex items-center justify-center">
                     <div className="text-center">
-                      <Camera className="w-16 h-16 text-slate-400 mb-4 mx-auto" />
-                      <p className="text-slate-500">Camera preview (mock)</p>
+                      <Camera className="w-16 h-16 text-slate-400 mb-4 mx-auto animate-pulse" />
+                      <p className="text-slate-500">Starting camera...</p>
                     </div>
-                  ) : (
-                    <div className="text-center text-red-400">
-                      <p>Camera not available</p>
-                      <p className="text-sm mt-2">{cameraError}</p>
-                    </div>
-                  )}
-                </div>
+                  </div>
+                )}
 
                 {/* Timer Overlay */}
                 {isTimerActive && timerCount > 0 && (
                   <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
                     <div className="text-white text-8xl font-bold animate-pulse">
                       {timerCount}
+                    </div>
+                  </div>
+                )}
+
+                {/* Upload Overlay */}
+                {isUploading && (
+                  <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
+                    <div className="text-white text-center">
+                      <div className="animate-spin w-8 h-8 border-4 border-white border-t-transparent rounded-full mx-auto mb-2"></div>
+                      <p>Saving photo...</p>
                     </div>
                   </div>
                 )}
@@ -107,7 +118,7 @@ const CameraView = ({
                   size="lg"
                   onClick={onToggleMirror}
                   className="bg-white/80 hover:bg-pink-50 border-pink-200"
-                  disabled={isTimerActive}
+                  disabled={isTimerActive || isUploading}
                 >
                   <FlipHorizontal className="w-5 h-5 mr-2" />
                   Mirror
@@ -116,18 +127,18 @@ const CameraView = ({
                 <Button
                   size="lg"
                   onClick={onTakePhoto}
-                  disabled={isTimerActive}
+                  disabled={isTimerActive || isUploading || !camera.hasCamera}
                   className="bg-gradient-to-r from-pink-400 to-blue-400 hover:from-pink-500 hover:to-blue-500 text-white px-8 py-3 rounded-full shadow-lg hover:shadow-xl transition-all duration-300"
                 >
                   <Camera className="w-5 h-5 mr-2" />
-                  {isTimerActive ? 'Taking Photo...' : 'Take Photo'}
+                  {isTimerActive ? 'Taking Photo...' : isUploading ? 'Saving...' : 'Take Photo'}
                 </Button>
 
                 <Button
                   variant="outline"
                   size="lg"
                   className="bg-white/80 hover:bg-blue-50 border-blue-200"
-                  disabled={isTimerActive}
+                  disabled={isTimerActive || isUploading}
                 >
                   <Timer className="w-5 h-5 mr-2" />
                   Timer
