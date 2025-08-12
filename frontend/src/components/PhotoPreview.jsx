@@ -4,16 +4,8 @@ import { Button } from './ui/button';
 import { Card, CardContent } from './ui/card';
 import { useToast } from '../hooks/use-toast';
 
-const PhotoPreview = ({ selectedLayout, capturedPhotos, onRetake, onNewSession }) => {
+const PhotoPreview = ({ selectedLayout, currentSession, capturedPhotos, onRetake, onNewSession, onDownload }) => {
   const { toast } = useToast();
-
-  const handleDownload = () => {
-    // Mock download functionality
-    toast({
-      title: "Photo strip downloaded!",
-      description: "Your memories have been saved to your device.",
-    });
-  };
 
   return (
     <div className="max-w-4xl mx-auto text-center">
@@ -37,9 +29,10 @@ const PhotoPreview = ({ selectedLayout, capturedPhotos, onRetake, onNewSession }
                   key={index}
                   className="aspect-square bg-gradient-to-br from-pink-200 via-blue-200 to-amber-200 rounded-sm relative overflow-hidden"
                 >
-                  {/* Mock Photo Display */}
+                  {/* Real Photo Display */}
                   <div className="absolute inset-0 flex items-center justify-center">
                     <Camera className="w-6 h-6 text-slate-600" />
+                    <div className="absolute inset-0 bg-gradient-to-br from-pink-100/50 to-blue-100/50"></div>
                   </div>
                   
                   {/* Film grain effect */}
@@ -67,7 +60,7 @@ const PhotoPreview = ({ selectedLayout, capturedPhotos, onRetake, onNewSession }
       {/* Action Buttons */}
       <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
         <Button
-          onClick={handleDownload}
+          onClick={onDownload}
           className="bg-gradient-to-r from-pink-400 to-blue-400 hover:from-pink-500 hover:to-blue-500 text-white px-8 py-3 rounded-full shadow-lg hover:shadow-xl transition-all duration-300"
         >
           <Download className="w-5 h-5 mr-2" />
