@@ -6,21 +6,57 @@ import { useToast } from '../hooks/use-toast';
 import LayoutSelection from './LayoutSelection';
 import CameraView from './CameraView';
 import PhotoPreview from './PhotoPreview';
-import { mockPhotos } from '../utils/mockData';
+import { photoAPI } from '../services/api';
+import { useCamera } from '../hooks/useCamera';
 
 const Photobooth = () => {
   const [currentStep, setCurrentStep] = useState('layout'); // layout, camera, preview
   const [selectedLayout, setSelectedLayout] = useState(null);
+  const [currentSession, setCurrentSession] = useState(null);
   const [capturedPhotos, setCapturedPhotos] = useState([]);
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
   const [isTimerActive, setIsTimerActive] = useState(false);
   const [timerCount, setTimerCount] = useState(3);
   const [isMirrored, setIsMirrored] = useState(true);
+  const [isUploading, setIsUploading] = useState(false);
   const { toast } = useToast();
+  const camera = useCamera();
 
-  // Mock camera functionality
-  const handleTakePhoto = () => {
-    if (isTimerActive) return;
+  const handleLayoutSelect = async (layout) => {
+    try {
+      // Create new session
+      const session = await photoAPI.createSession({
+        layout_id: layout.id,
+        layout_name: layout.name,
+        photo_count: layout.count
+      });
+
+      setSelectedLayout(layout);
+      setCurrentSession(session);
+      setCurrentStep('camera');
+      setCapturedPhotos([]);
+      setCurrentPhotoIndex(0);
+
+      // Start camera when entering camera view
+      setTimeout(() => {
+        camera.startCamera();
+      }, 500);
+
+      toast({
+        title: "Session created!",
+        description: `Ready to capture ${layout.count} photos for ${layout.name}.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to create photo session. Please try again.",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleTakePhoto = async () => {
+    if (isTimerActive || !camera.hasCamera || !currentSession) return;
     
     setIsTimerActive(true);
     setTimerCount(3);
@@ -29,24 +65,52 @@ const Photobooth = () => {
       setTimerCount(prev => {
         if (prev <= 1) {
           clearInterval(countdown);
-          setTimeout(() => {
-            // Simulate photo capture with mock data
-            const newPhoto = mockPhotos[Math.floor(Math.random() * mockPhotos.length)];
-            setCapturedPhotos(prev => [...prev, newPhoto]);
-            
-            if (currentPhotoIndex + 1 < selectedLayout.count) {
-              setCurrentPhotoIndex(prev => prev + 1);
-            } else {
-              setCurrentStep('preview');
+          setTimeout(async () => {
+            try {
+              // Capture photo from camera
+              const photoData = camera.capturePhoto();
+              if (!photoData) {
+                throw new Error('Failed to capture photo');
+              }
+
+              setIsUploading(true);
+
+              // Upload photo to backend
+              const photo = await photoAPI.capturePhoto({
+                session_id: currentSession.id,
+                photo_index: currentPhotoIndex,
+                image_data: photoData
+              });
+
+              setCapturedPhotos(prev => [...prev, photo]);
+              
+              if (currentPhotoIndex + 1 < selectedLayout.count) {
+                setCurrentPhotoIndex(prev => prev + 1);
+                toast({
+                  title: "Photo captured!",
+                  description: `Photo ${currentPhotoIndex + 1} of ${selectedLayout.count} saved.`,
+                });
+              } else {
+                // All photos captured, generate strip
+                await generatePhotoStrip();
+              }
+
+              setIsUploading(false);
+              setIsTimerActive(false);
+              setTimerCount(3);
+              
+            } catch (error) {
+              console.error('Photo capture error:', error);
+              setIsUploading(false);
+              setIsTimerActive(false);
+              setTimerCount(3);
+              
+              toast({
+                title: "Error",
+                description: "Failed to capture photo. Please try again.",
+                variant: "destructive"
+              });
             }
-            
-            setIsTimerActive(false);
-            setTimerCount(3);
-            
-            toast({
-              title: "Photo captured!",
-              description: `Photo ${currentPhotoIndex + 1} of ${selectedLayout.count} taken.`,
-            });
           }, 500);
           return 0;
         }
@@ -55,24 +119,64 @@ const Photobooth = () => {
     }, 1000);
   };
 
-  const handleLayoutSelect = (layout) => {
-    setSelectedLayout(layout);
-    setCurrentStep('camera');
-    setCapturedPhotos([]);
-    setCurrentPhotoIndex(0);
+  const generatePhotoStrip = async () => {
+    try {
+      const stripData = await photoAPI.generateStrip(currentSession.id);
+      
+      // Update session with strip info
+      setCurrentSession(prev => ({
+        ...prev,
+        strip_url: stripData.strip_url,
+        download_url: stripData.download_url,
+        completed: true
+      }));
+
+      setCurrentStep('preview');
+      camera.stopCamera();
+
+      toast({
+        title: "Photo strip ready!",
+        description: "Your beautiful memories are ready for download.",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to generate photo strip. Please try again.",
+        variant: "destructive"
+      });
+    }
   };
 
   const handleRetake = () => {
     setCapturedPhotos([]);
     setCurrentPhotoIndex(0);
     setCurrentStep('camera');
+    camera.startCamera();
   };
 
   const handleNewSession = () => {
     setCurrentStep('layout');
     setSelectedLayout(null);
+    setCurrentSession(null);
     setCapturedPhotos([]);
     setCurrentPhotoIndex(0);
+    camera.stopCamera();
+  };
+
+  const handleDownload = () => {
+    if (currentSession && currentSession.download_url) {
+      const link = document.createElement('a');
+      link.href = photoAPI.getDownloadURL(currentSession.id);
+      link.download = `photobooth_strip_${currentSession.id}.jpg`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      toast({
+        title: "Download started!",
+        description: "Your photo strip is being downloaded.",
+      });
+    }
   };
 
   return (
@@ -86,6 +190,9 @@ const Photobooth = () => {
 
       {/* Film Grain Overlay */}
       <div className="absolute inset-0 opacity-10 pointer-events-none grain-texture"></div>
+
+      {/* Hidden canvas for photo processing */}
+      <canvas ref={camera.canvasRef} style={{ display: 'none' }} />
 
       <div className="relative z-10 container mx-auto px-4 py-8">
         {/* Header */}
@@ -111,18 +218,22 @@ const Photobooth = () => {
             isTimerActive={isTimerActive}
             timerCount={timerCount}
             isMirrored={isMirrored}
+            isUploading={isUploading}
+            camera={camera}
             onTakePhoto={handleTakePhoto}
             onToggleMirror={() => setIsMirrored(!isMirrored)}
-            onBack={() => setCurrentStep('layout')}
+            onBack={handleNewSession}
           />
         )}
 
         {currentStep === 'preview' && (
           <PhotoPreview
             selectedLayout={selectedLayout}
+            currentSession={currentSession}
             capturedPhotos={capturedPhotos}
             onRetake={handleRetake}
             onNewSession={handleNewSession}
+            onDownload={handleDownload}
           />
         )}
       </div>
